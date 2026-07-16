@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>データメッシュの核心 — 共有する解釈を最小にする</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --text: #2b2f36;
+    --sub: #5c6470;
+    --accent: #2563eb;
+    --accent-light: #eff4ff;
+    --border: #e3e7ed;
+    --code-bg: #f1f3f7;
+    --good: #15803d;
+    --bad: #b91c1c;
+    --warn-bg: #fff7ed;
+    --warn-border: #fdba74;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.85;
+  }
+  .container { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { font-size: 1.85rem; margin: 0 0 8px; }
+  header p { color: var(--sub); margin: 0; }
+
+  .reading-note {
+    background: #fbfcfe; border: 1px dashed var(--border); border-radius: 10px;
+    padding: 12px 20px; margin-bottom: 40px; font-size: .9rem; color: var(--sub);
+  }
+
+  .flow-nav {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 24px; margin-bottom: 48px;
+  }
+  .flow-nav ol { margin: 8px 0 0; padding-left: 1.4em; }
+  .flow-nav li { margin: 4px 0; }
+  .flow-nav a { color: var(--accent); text-decoration: none; }
+  .flow-nav a:hover { text-decoration: underline; }
+  .flow-nav .label { font-weight: 700; font-size: .9rem; color: var(--sub); letter-spacing: .05em; }
+
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 32px; margin-bottom: 28px;
+  }
+  .step-tag {
+    display: inline-block; background: var(--accent); color: #fff;
+    font-size: .78rem; font-weight: 700; padding: 2px 12px; border-radius: 999px;
+    letter-spacing: .05em; margin-bottom: 8px;
+  }
+  section h2 { font-size: 1.35rem; margin: 0 0 14px; }
+  h3 { font-size: 1.05rem; margin: 24px 0 8px; color: var(--accent); }
+  p { margin: 10px 0; }
+
+  .key {
+    background: var(--accent-light); border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-weight: 600;
+  }
+  .caution {
+    background: var(--warn-bg); border-left: 4px solid var(--warn-border);
+    border-radius: 0 8px 8px 0; padding: 12px 18px; margin: 16px 0;
+  }
+  .caution::before { content: "⚠ 実務での注釈　"; font-weight: 700; color: #c2410c; }
+
+  details {
+    border: 1px solid var(--border); border-radius: 10px;
+    margin: 14px 0; background: #fbfcfe; overflow: hidden;
+  }
+  details summary {
+    cursor: pointer; padding: 12px 18px; font-weight: 600; color: var(--accent);
+    list-style: none; user-select: none;
+  }
+  details summary::before { content: "▸ "; transition: transform .2s; }
+  details[open] summary::before { content: "▾ "; }
+  details summary:hover { background: var(--accent-light); }
+  details .inner { padding: 4px 20px 18px; border-top: 1px dashed var(--border); }
+
+  pre {
+    background: var(--code-bg); border-radius: 8px; padding: 14px 16px;
+    overflow-x: auto; font-size: .85rem; line-height: 1.6;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .92rem; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-light); }
+
+  ul, ol { padding-left: 1.5em; margin: 8px 0; }
+  li { margin: 3px 0; }
+  .ok { color: var(--good); font-weight: 700; }
+  .ng { color: var(--bad); font-weight: 700; }
+
+  .summary-final {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff; border: none;
+  }
+  .summary-final h2 { color: #fff; }
+  .summary-final .key { background: rgba(255,255,255,.12); border-left-color: #93c5fd; }
+  footer { text-align: center; color: var(--sub); font-size: .85rem; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>データメッシュの核心</h1>
+  <p>所有は分散したい、しかし横断では繋ぎたい——この緊張を「最小の共有解釈」で解く</p>
+</header>
+
+<div class="reading-note">
+  本資料はデータメッシュ（Zhamak Dehghani, 2019）の考え方を、「共有する解釈を最小にする」という一本の論理として再構成したもの。原典は4つの原則を並列に提示しており、この「核」の読み方は原典に反しないが、本資料独自の整理である。
+</div>
+
+<nav class="flow-nav">
+  <span class="label">全体の流れ</span>
+  <ol>
+    <li><a href="#s1">問い — 中央集約はなぜ限界になるのか</a></li>
+    <li><a href="#s2">核 — 分散したい、でも繋ぎたい。答えは「最小の共有解釈」</a></li>
+    <li><a href="#s3">仕組み① データプロダクト — 「使える」を保証する境界</a></li>
+    <li><a href="#s4">仕組み② グローバルID — 「繋がる」を保証する最小の共有</a></li>
+    <li><a href="#s5">仕組み③ 連邦ガバナンスと自動執行 — 合意を回し続ける機構</a></li>
+    <li><a href="#s6">実務への着地 — 既存データレイクからの移行</a></li>
+  </ol>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <span class="step-tag">1. 問い</span>
+  <h2>中央集約はなぜ限界になるのか</h2>
+
+  <p>「データはまず一箇所（レイク/DWH）に集め、中央チームが整えて配る」——この方式は小〜中規模では有効だが、組織が大きくなると構造的に破綻する。</p>
+
+  <ol>
+    <li><b>中央データチームがボトルネックになる</b> — 取込・意味の問い合わせ・修正・ダッシュボード作成の依頼が全部中央に集中する</li>
+    <li><b>データの意味を一番知っている人が管理していない</b> — 中央は基盤に詳しくても業務の意味には詳しくない。「データはあるが正しく使えるか分からない」状態に</li>
+    <li><b>データレイクが「データ沼（Data Swamp）」になる</b> — 誰が作ったか・どれが正か・使ってよいのか分からないテーブルの山</li>
+  </ol>
+
+  <details>
+    <summary>具体例：「売上」の意味が複数ある問題</summary>
+    <div class="inner">
+      <p>「売上」という項目ひとつでも、受注/出荷/請求ベース、キャンセル控除の前後、税込/税抜、会計上/KPI上——と意味が複数ある。この判断ができるのは業務ドメインの人間であって、パイプラインを運用する中央チームではない。</p>
+    </div>
+  </details>
+
+  <p>一方で、中央集約には決定的な利点があった。<b>全部が同じ場所にあるから、ドメイン横断の分析が容易</b>だということ。だから「じゃあ分散させよう」と単純にはいかない。分散した瞬間、この利点が消えてサイロ化するからである。ここに本質的な緊張がある。</p>
+
+  <details>
+    <summary>比較表：中央集約型が向く場合・破綻する場合</summary>
+    <div class="inner">
+      <table>
+        <tr><th>観点</th><th>中央集約（レイク/DWH中心）</th><th>限界が来る条件</th></tr>
+        <tr><td>主役</td><td>中央データチーム</td><td>利用者・ドメイン数の増加で依頼が飽和</td></tr>
+        <tr><td>意味の管理</td><td>中央が頑張って整理</td><td>業務の複雑化で追いつかなくなる</td></tr>
+        <tr><td>横断分析</td><td>容易（同じDWHで結合）</td><td>—（これが失いたくない利点）</td></tr>
+        <tr><td>向く規模</td><td>小〜中規模・単一事業</td><td>大規模・複数事業・複数ドメイン</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <span class="step-tag">2. 核</span>
+  <h2>分散したい、でも繋ぎたい——答えは「最小の共有解釈」</h2>
+
+  <p>整理すると、両端はどちらも失敗する。</p>
+
+  <table>
+    <tr><th></th><th>完全な中央集約</th><th>完全な分権</th></tr>
+    <tr><td>何が起きるか</td><td>中央が全データの意味を解釈する「全社正規モデル」「ゴールデンレコード」を目指す</td><td>各ドメインが勝手にデータを持つ</td></tr>
+    <tr><td>結末</td><td>委員会で決めるうちに陳腐化。単一モデルはどの文脈にも合わない。中央が承認の関所＝ボトルネックに</td><td>ID体系がバラバラで結合不能。分析者ごとに数字が違う。サイロ化</td></tr>
+  </table>
+
+  <div class="key">
+    データメッシュの答え：<u>共有する解釈を最小にする。ただし改訂可能な形で。</u><br>
+    属性・状態・分類は共有しない——各ドメインが自分の文脈で決める。<br>
+    全社で共有するのは<u>「同じ実体を指差せる」という同一性の一点だけ</u>。<br>
+    そしてその合意すら「絶対の真理」ではなく、履歴付きで改訂できる合意として管理する。
+  </div>
+
+  <p>共有解釈がゼロだとドメイン間の結合は原理的に不可能なので、横断利用と無解釈は両立しない。設計問題は「共有する解釈をどこまで薄くできるか」であり、データメッシュは<b>相互運用が買える最小の射影</b>を選んだ思想だと言える。</p>
+
+  <details>
+    <summary>具体例：なぜゴールデンレコード（最大の共有解釈）は詰むのか</summary>
+    <div class="inner">
+      <p>山田太郎さんが3システムに別々に存在し、妻・花子さんのカードで支払っているとする。</p>
+<pre>CRM:      C-1001  山田太郎
+EC会員DB:  M-555   taro@example.com
+請求:      B-88    支払者=山田花子</pre>
+      <p>中央MDMが「唯一の正しい顧客」を1行に統合しようとすると：</p>
+      <table>
+        <tr><th>golden_id</th><th>name</th><th>payer</th><th>この注文の顧客は？</th></tr>
+        <tr><td>GR-1</td><td>太郎? 花子?</td><td>花子</td><td>???</td></tr>
+      </table>
+      <p>会計にとっての正解は「花子（請求主体）」、CSは「太郎（利用者）」、マーケは「山田家（世帯）」。<b>1行のゴールデンレコードはどれかにとって必ず間違いになる。</b>しかも統合方針を決める会議に数ヶ月かかり、全ドメインが待たされる。</p>
+    </div>
+  </details>
+
+  <h3>4原則は、この一点を成立させる装置として読める</h3>
+  <table>
+    <tr><th>原則</th><th>この物語での役割</th></tr>
+    <tr><td>① ドメインごとのデータ所有</td><td>分権の宣言——意味の決定権を、意味を知る現場に返す</td></tr>
+    <tr><td>② Data as a Product</td><td>「使える」の保証——分権しても他者が使える品質・契約で公開する（→仕組み①）</td></tr>
+    <tr><td>③ セルフサービス基盤</td><td>自動執行の場——合意を人手でなく基盤が守らせる（→仕組み③）</td></tr>
+    <tr><td>④ フェデレーテッドガバナンス</td><td>最小合意の維持機構——何を共有するかをドメイン代表の合議で決める（→仕組み②③）</td></tr>
+  </table>
+
+  <p>以降、この「最小の共有解釈で繋ぐ」を実現する3つの仕組みを順に見る。</p>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <span class="step-tag">3. 仕組み①</span>
+  <h2>データプロダクト — 「使える」を保証する境界</h2>
+
+  <p>意味の決定権をドメインに返すと言っても、ドメインがデータを抱え込んだらサイロである。そこでデータメッシュにおける所有（オーナーシップ）は、囲い込む権限ではなく<b>公開する責任</b>として定義される。</p>
+
+  <div class="key">
+    データプロダクト ＝ データの「公開API」。<br>
+    内部データ（Raw・中間テーブル）は閉じてよい。その代わり、外部利用向けに<br>
+    定義・品質SLO・スキーマ・変更ポリシー・アクセス条件を明示した<u>契約付きのデータ</u>を公開する義務を負う。
+  </div>
+
+  <h3>内部と公開の境界を先に引いておく</h3>
+  <table>
+    <tr><th>レイヤー</th><th>内容</th><th>アクセス</th></tr>
+    <tr><td>Raw / 業務システム由来</td><td>生データ（内部実装）</td><td>ドメイン内＋最小限の基盤・監査のみ</td></tr>
+    <tr><td>ドメイン内整備済み</td><td>中間・クレンジング済み（内部実装）</td><td>基本ドメイン内</td></tr>
+    <tr><td>公開データプロダクト</td><td>契約付きの外部向けデータ</td><td>他ドメインが権限・契約に基づき利用</td></tr>
+  </table>
+
+  <p>この境界があると、外部からの要求に原則で答えられる。公開プロダクト（製品）は使ってよい。未公開の内部データ（設計図）への要求は「内部実装なので原則不可」と打ち返せる——「製品が売られているんだから設計図も見せろ」には応じない、ということ。毎回悩む代わりに、<b>プロダクト設計時点で先に悩んでおく</b>。</p>
+
+  <details>
+    <summary>具体例：同じ注文データの公開レベル分けと、要求への打ち返し</summary>
+    <div class="inner">
+<pre>order_raw               生データ。注文ドメイン内部のみ（PII含む）
+order_fact_restricted   詳細明細。許可された分析者向け
+order_fact_public       標準分析用。PII除外・疑似化ID
+order_summary_daily     日次集計。広く利用可能</pre>
+<pre>「注文データを分析したい」
+  → order_fact_public を使ってください
+
+「order_raw を見たい」
+  → 原則不可です。不足項目があれば
+     データプロダクト改善要望として受け付けます</pre>
+      <p>ソフトウェアの「公開APIは使ってよいが、内部DBへの直接アクセスは不可」と同じ規律。</p>
+    </div>
+  </details>
+
+  <div class="caution">「断る権利」は「改善要望に応える義務」とセットで初めて成立する。改善ルートにリソースやSLAが割かれないと、探索的分析やML開発が止まり、ドメインが新しいボトルネックになる。探索フェーズには期限付き・目的限定の例外アクセスを機動的に出せる運用も必要。</div>
+
+  <h3>横断的な集約も「目的別のプロダクト」として作る</h3>
+  <p>横断ニーズを持つ<b>利用側ドメイン（consumer-aligned domain）</b>——経営分析、マーケ分析など——が、各ドメインの公開プロダクトを入力に、自分の目的に合わせた集約プロダクトを作りオーナーになる。「あらゆる用途に効く万能の customer_360」を中央に1つ作る発想には慎重で、集約もあくまで目的別・オーナー付きで扱う。</p>
+
+  <details>
+    <summary>具体例：公開プロダクトを組み合わせた横断分析SQL</summary>
+    <div class="inner">
+      <p>キャンペーン別の初回購入とLTV。接触ログは顧客×キャンペーンで1行に集約してから結合し（重複計上防止）、LTVの起点は接触時点に置く。</p>
+<pre>WITH first_touch AS (
+  SELECT customer_gid, campaign_id,
+         MIN(touch_timestamp) AS touched_at
+  FROM marketing.campaign_touch
+  GROUP BY customer_gid, campaign_id
+)
+SELECT
+  t.campaign_id,
+  COUNT(DISTINCT t.customer_gid) AS touched_customers,
+  COUNT(DISTINCT o.customer_gid) AS purchased_customers,
+  SUM(o.net_sales)               AS revenue_90d
+FROM first_touch t
+LEFT JOIN orders.order_fact o
+  ON o.customer_gid = t.customer_gid
+ AND o.order_timestamp BETWEEN t.touched_at
+                           AND t.touched_at + INTERVAL '90 days'
+GROUP BY t.campaign_id;</pre>
+      <p><code>net_sales</code> の意味は注文ドメインが、<code>campaign_id</code> はマーケドメインが契約として保証している。複数キャンペーン接触時の収益配分（アトリビューション）は別途、共通定義としてガバナンス対象になる。</p>
+    </div>
+  </details>
+
+  <p>ここで問題が残る。プロダクト化は「使える」を保証するが、ドメインごとに顧客の定義がバラバラなら「繋がる」は保証されない。それを担うのが次の仕組みである。</p>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <span class="step-tag">4. 仕組み②</span>
+  <h2>グローバルID — 「繋がる」を保証する最小の共有</h2>
+
+  <h3>polyseme：モデルは共有しない、IDだけ共有する</h3>
+  <p>「顧客」「商品」のように複数ドメインに登場する概念を <b>polyseme（多義概念）</b> と呼ぶ。各ドメインは自分の文脈での「顧客」を自分でモデリングしてよい（DDDの境界づけられたコンテキスト）。単一の正解モデルは作らず、polyseme に<b>グローバルID（gid）</b>を割り当て、ドメイン間はそのIDで結び付ける。</p>
+
+  <div class="key">
+    横断分析に必要なのは「全ドメインが同じ顧客モデルを使うこと」ではなく、<br>
+    <u>「どのドメインの顧客ビューも、同じgidを指差せること」</u>。
+  </div>
+
+  <details open>
+    <summary>具体例：山田家のデータで見る全体像</summary>
+    <div class="inner">
+      <p><b>全社で持つのは薄いID読み替え表だけ</b>（属性は持たない）：</p>
+      <table>
+        <tr><th>source_system</th><th>source_id</th><th>customer_gid</th></tr>
+        <tr><td>CRM</td><td>C-1001</td><td>G-001（太郎）</td></tr>
+        <tr><td>EC</td><td>M-555</td><td>G-001（太郎）</td></tr>
+        <tr><td>BILLING</td><td>B-88</td><td>G-002（花子）</td></tr>
+      </table>
+      <p><b>各ドメインは自分の定義で顧客ビューを公開する</b>——3つとも「顧客」の定義が違うが、それでよい：</p>
+<pre>customer.customer_profile   顧客＝EC会員      (G-001, active, 2025-04-01)
+finance.billing_view        顧客＝請求主体    (BE-88, payer=G-002, users=[G-001])
+marketing.household_view    顧客＝世帯        (H-10, members=[G-001, G-002])</pre>
+      <p><b>横断分析はgid経由で成立する</b>：</p>
+<pre>orders.order_fact:  O-1  buyer=G-001  12,000円
+                    O-2  buyer=G-002   3,000円
+
+マーケの世帯LTV : H-10のメンバー[G-001,G-002]の注文合算 → 15,000円
+会計の請求先集計: BE-88に紐づく注文を集計          → 別の正しい数字</pre>
+      <p>どちらも正しく、矛盾しない。ゴールデンレコードで1つの答えに統合していたら、どちらかが必ず間違った数字を見ることになる。</p>
+    </div>
+  </details>
+
+  <h3>読み替えテーブルの正体：「IDの変換」と「同一性の全社合意」</h3>
+  <p>データ構造としては<b>ただのID読み替え表</b>である。そして「だけ」であることが意図的な設計——従来MDMは読み替え表＋統合属性（ゴールデンレコード）まで作ろうとして属性の正で詰んだ。データメッシュは読み替えの部分だけを全社資産として残し、属性はドメインに返した。</p>
+  <p>ただし各行は「C-1001とM-555は同一人物である」という<b>業務上の主張（判断結果）</b>である。だからこの主張は絶対の真理ではなく、<b>改訂可能な合意</b>として管理する——マージ/分割の履歴、確信度、判断者を記録し、誤りが分かれば履歴付きで訂正する。</p>
+
+  <details>
+    <summary>具体例：mappingテーブルのカラム設計と、守るべき原則</summary>
+    <div class="inner">
+      <p>守るべきは「カラム数」ではなく<b>「同一性の解決以外の情報を入れない」</b>こと。名前・住所・ステータスを1つでも入れた瞬間、ゴールデンレコードへ滑り落ち始める。運用メタデータは入れてよい：</p>
+      <table>
+        <tr><th>カラム</th><th>用途</th></tr>
+        <tr><td>source_system, source_id, customer_gid</td><td>本体</td></tr>
+        <tr><td>status</td><td>active / merged</td></tr>
+        <tr><td>match_method, confidence</td><td>email_exact 等、なぜ紐づいたか</td></tr>
+        <tr><td>valid_from, valid_to</td><td>いつ時点の対応か</td></tr>
+        <tr><td>decided_by</td><td>自動 or スチュワード判断</td></tr>
+      </table>
+      <p>マージ履歴は別テーブル：</p>
+      <table>
+        <tr><th>old_gid</th><th>new_gid</th><th>merged_at</th><th>decided_by</th></tr>
+        <tr><td>G-003</td><td>G-001</td><td>2026-07-01</td><td>顧客ドメイン スチュワード</td></tr>
+      </table>
+      <p>マージ後も旧gidは履歴経由で解決可能に保つ。gidは「不変」ではないが「追跡可能」。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>具体例：初回構築の手順 —「先に名寄せ、あとに採番」</summary>
+    <div class="inner">
+      <p>「全レコードにIDを振ってから統合」ではなく、<b>「名寄せしてクラスタ化 → クラスタ1つにつきgidを1個採番」</b>。マージは下流全体に影響する高コストイベントなので、構築時には極力発生させない。</p>
+<pre>① 各ドメインから候補レコードを収集（source_id + email/電話/氏名）
+② マッチングルールでクラスタ化
+     email完全一致          → 同一
+     phone+姓一致           → 確信度が閾値未満なら人手確認キューへ
+③ クラスタごとに gid を採番（gidに意味を持たせない）</pre>
+      <p>運用開始後は増分処理：新レコード → 既存と照合 → 一致なら紐づけ / 不一致なら新規採番 / グレーは仮採番してキューへ。<b>マージは運用後の例外イベント</b>として履歴付きで扱う。</p>
+    </div>
+  </details>
+
+  <h3>gid自体も「一つの射影」であることを認める</h3>
+  <p>「G-xxx＝一人の人間」と決めること自体が一つの解釈である。データメッシュはこれを否定しない。避けたいのは「共有解釈の存在」ではなく「最大化された共有解釈」であり、gidは<b>相互運用が買える最小の射影を、改訂可能な形で持つ</b>という選択である。</p>
+  <p>したがって「人」という粒度は特権的ではない。person（G-001）・世帯（H-10）・請求主体（BE-88）はすでに<b>3つの射影が並存している</b>状態であり、必要なら「自然人＋法人」を束ねるParty型のID空間も作れる。</p>
+
+  <div class="key">
+    gidは「実体があるから振る」のではなく、<br>
+    <u>「複数ドメインがこの軸で結合・集計したいという実需と合意があるから振る」</u>。<br>
+    gid体系＝全社で共有する視点のカタログ。無闇に増やさない。
+  </div>
+
+  <p>新しいgid体系を作ってよい条件：その軸で結合したい利用者が<b>複数ドメインに</b>実在する／「何をもって同一とするか」に関係ドメインが合意できる／マッピング維持・マージ伝播のコストを払う価値がある——の3つが揃ったとき。</p>
+
+  <details>
+    <summary>具体例：Partyモデル（自然人＋法人）と、並列ID空間のルール</summary>
+    <div class="inner">
+      <p>銀行・保険等では「Party＝自然人または法人」として契約主体を統一的に扱う。判断基準は「その抽象で相互運用が実際に買えるか」——未回収残高やKYCが個人・法人をまたぐなら効く。ただしマッチングルール（個人：email・電話／法人：法人番号・登記）や規制は型ごとに分かれるため、「ID空間は1つ、名寄せ運用は型別」となる。</p>
+      <p>person_gid と party_gid を<b>並列で持つのはOK</b>。ただし条件が1つ：<b>同一性の判断は1回だけ行い、片方を導出にする</b>。</p>
+<pre>person_registry   G-001 = 山田太郎   ← 名寄せの主権はここ
+org_registry      O-055 = 株式会社X
+
+party_registry（導出層）
+  PT-001 → person G-001
+  PT-055 → org    O-055</pre>
+      <p><span class="ng">NG:</span> 2つのレジストリが独立に名寄せを実行する——いずれ判断が食い違い、「どちらのIDで結合するかで数字が変わる」状態が再発する。<b>判断は一箇所、IDは複数ビュー。</b></p>
+      <p>また「山田太郎は株式会社Xの担当者」は統合ではなく関係テーブル（PT-001 —is_contact_of→ PT-055）で表す。実体と関係を混ぜない。</p>
+    </div>
+  </details>
+
+  <h3>gidの使い方：書くのは自由、寄りかかるのは禁止</h3>
+  <table>
+    <tr><th>場面</th><th>ルール</th></tr>
+    <tr><td>自分が発生源の実体のPK</td><td><span class="ng">gid使用禁止</span>。<code>subscription_id</code> 等は自前採番</td></tr>
+    <tr><td>業務フロー経由で他ドメインを参照</td><td>上流のローカルID（<code>ec_member_id</code> 等）を優先保存。gidは公開時に解決</td></tr>
+    <tr><td>入力が公開プロダクトしかない場合</td><td><span class="ok">gid参照OK</span>（それが結合キー）。ただしマージ履歴への追随義務を引き受ける</td></tr>
+    <tr><td>公開データプロダクト</td><td><span class="ok">gidを必ず載せる</span>（相互運用標準）。公開時にmappingを引いて付与すればマージに自動追随</td></tr>
+  </table>
+  <p>要するに、gidの安定性に業務処理を依存させないこと。gidは改訂されうる値であり、保存する側が履歴に追随する責任を持つ。</p>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <span class="step-tag">5. 仕組み③</span>
+  <h2>連邦ガバナンスと自動執行 — 合意を回し続ける機構</h2>
+
+  <p>最小の共有解釈は、決めて終わりではなく回し続けるものである。誰が決め、誰が実行し、人はどこに登場するのか。</p>
+
+  <h3>決める主体と範囲：連邦制で、最小限だけ</h3>
+  <p>グローバルID標準や相互運用ルールを決めるのは、中央の専任組織ではなく<b>ドメイン代表の合議体（フェデレーテッドガバナンス）</b>。決める範囲は横断利用に必要な最小限に絞る。</p>
+
+  <table>
+    <tr><th>連邦ガバナンスで決める最小限の全社標準</th><th>各ドメインが持つ</th></tr>
+    <tr>
+      <td>gid標準（採番・一意性・再利用禁止）<br>発生源ドメインの登録義務<br>相互運用ルール（公開プロダクトはgidを載せる・変更通知）<br>参照コード（国・通貨等）<br>マージ履歴の管理義務</td>
+      <td>自分の文脈での概念モデル（「顧客とは何か」）<br>属性の意味・業務定義<br>名寄せルールの中身（業務判断）<br>グレーゾーンの裁定（スチュワード）<br>品質責任・プロダクト提供</td>
+    </tr>
+  </table>
+
+  <p>「email一致なら同一人物か」「家族カードの支払者は別人か」という名寄せルールの<b>中身</b>はほぼすべて業務判断なので、そのエンティティのオーナードメインが決める。連邦が決めるのは形式と義務だけ。</p>
+
+  <h3>実行は会議ではなく基盤：computational governance</h3>
+  <p>合意はレビュー会や承認フローで守らせるのではなく、可能な限り<b>基盤に埋め込んで自動執行する</b>（policy as code）。人が登場するのは例外の裁定だけ。</p>
+
+  <details open>
+    <summary>具体例：新規顧客が追加されたとき、何が自動で起きるか</summary>
+    <div class="inner">
+      <p>設計原則：業務フローを絶対にブロックしない・全部非同期・中央から他ドメインのテーブルには書き込まない。</p>
+<pre>① 発生源ドメイン（EC）
+   M-999 が INSERT（レジストリが落ちていても登録は成功する）
+    └→ 非同期イベント発行:
+       { source: "EC/M-999",
+         match_attrs: { email, phone, name } }
+
+② 中央レジストリ（プラットフォーム運用・全自動）
+   1. 受入検証（必須マッチング属性がなければ隔離キュー）
+   2. マッチング（決定的ルール → 確率的ルール）
+   3. 3分岐:
+      ├ 高確信度で一致 → 既存gidに紐づけ
+      ├ 一致なし       → 新規gid採番
+      └ グレーゾーン   → 仮gidを即発行し、スチュワードキューへ
+   4. mapping書込（method, confidence, decided_by=auto）
+   5. イベント発行: { event:"gid_assigned", gid:"G-104", is_new:true }
+
+③ 発生源ドメイン
+   次回の公開パイプラインで gid が付与され、プロダクトに現れる
+
+④ 他ドメイン
+   原則、何も起きない（それが正しい設計）
+</pre>
+      <p>工夫は2つ。<b>冪等性</b>（リトライで同じイベントが2回来ても結果が同じ）と、<b>グレーゾーンでも仮gidを即発行</b>して下流を止めないこと（誤りは後でマージイベントとして訂正＝結果整合性）。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>具体例：他ドメインに発生する義務 / 自動化チェックリスト</summary>
+    <div class="inner">
+      <table>
+        <tr><th>立場</th><th>やること</th></tr>
+        <tr><td>公開プロダクトの利用者</td><td>作業ゼロ。上流の次回リフレッシュで新顧客が見える</td></tr>
+        <tr><td>gidキーの派生データ保持者</td><td>新規gidは対応不要。<b>gid_mergedイベントの購読だけ必須</b>（保存済みgidの付け替え）</td></tr>
+        <tr><td>業務的に新規顧客を知りたいドメイン</td><td>gid_assignedを任意購読（メッシュの義務ではなくビジネス利用）</td></tr>
+      </table>
+      <p>自動化すべきもの：受入契約の検証／マッチング・採番（冪等）／イベント発行（gid_assigned / gid_merged / gid_split）／グレーゾーンのキュー投入／公開時のgid解決（プラットフォームがAPI/ライブラリ提供）／<b>公開プロダクトのCIゲート</b>（gidカラムの参照整合性チェック、違反は公開ブロック）／マッチ率・キュー滞留の監視。</p>
+      <p>責任分担：</p>
+      <table>
+        <tr><th>役割</th><th>担当</th></tr>
+        <tr><td>新規レコードの供給</td><td>発生源の各ドメイン（義務）</td></tr>
+        <tr><td>マッチング・採番の基盤</td><td>プラットフォームチーム</td></tr>
+        <tr><td>ルール（形式・義務・履歴）</td><td>連邦ガバナンス</td></tr>
+        <tr><td>グレーゾーン・マージの判断</td><td>エンティティのオーナードメイン</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <div class="caution">実務の落としどころ：レガシーのID体系がバラバラな組織では「グローバルIDへの合意」自体が大仕事になるため、薄い中央MDMサービスや「ID権威としてのドメイン」を置くハイブリッドに落ち着くことが多い。その場合も中央のスコープはID・マッピング基盤・照合ルールの枠組みに限定し、属性の中身や業務の意味決定まで吸い上げないこと。そこまで寄せると、壊そうとした中央ボトルネックを名前を変えて再建することになる。</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <span class="step-tag">6. 着地</span>
+  <h2>実務への着地 — 既存データレイクからの移行</h2>
+
+  <div class="key">
+    既存レイクは解体しない。<u>共有プラットフォームとして残し、データセットごとの所有権だけを
+    業務ドメインに「再ラベリング」</u>していく。レイクは「アーキテクチャの主役」から
+    「各ドメインのプロダクトをホストする基盤の一つ」へ役割を降りる。「メッシュの1ドメイン」にはしない。
+  </div>
+
+  <h3>移行ステップ</h3>
+  <ol>
+    <li><b>棚卸し</b> — 「このテーブル、誰のもの？」に答えられる状態にする</li>
+    <li><b>分類</b> — A: 特定ドメインのもの / B: 横断統合物 / C: 中間データ / D: 所有者不明</li>
+    <li>Aは業務ドメインへオーナー移管（最初はBusiness Ownerだけドメイン、技術は中央でも可）</li>
+    <li>Bは利用側ドメインの集約プロダクトへ、Cは内部実装として非公開に、Dは廃止候補に</li>
+    <li>横断需要の高い1〜2ドメイン（顧客×注文×商品など）でパイロット</li>
+    <li>運用主体を「中央主導 → 共同運用 → ドメイン主体」と段階的に移す</li>
+  </ol>
+  <p>中央データチームは「全データを集めて依頼に応えるチーム」から、「カタログ・権限・品質監視・レジストリ・CI/CDを提供し、ドメインのプロダクト化を支援するプラットフォームチーム」へ役割を変える。役割の細分化は禁物で、<b>Ownerは1ドメインに1つ、関係者は複数</b>（内部分担はRACIで）。</p>
+
+  <details>
+    <summary>具体例：所有権の再ラベリングとプロダクト定義</summary>
+    <div class="inner">
+<pre>lake.raw_customers  → Owner: 顧客ドメイン   ← 物理は動かさない
+lake.raw_orders     → Owner: 注文ドメイン
+lake.customer_ltv   → Owner: 顧客分析ドメイン</pre>
+<pre>Data Product: order_fact
+Owner:        注文ドメイン（連絡先: #data-order）
+Join Keys:    order_id, customer_gid, product_id
+Metrics:      gross_sales, net_sales
+Quality:      order_id not null / duplicate = 0 / net_sales >= 0
+Change Policy: 破壊的変更は30日前通知</pre>
+    </div>
+  </details>
+
+  <h3>新しいドメインを設計するときの注意</h3>
+  <table>
+    <tr><th>内部テーブル</th><th>公開データプロダクト</th></tr>
+    <tr>
+      <td>PKは自前のローカルID（gid禁止）<br>名寄せ材料（email・上流ID）を入口で必ず取る<br>他ドメイン参照はマッピング可能なIDで（野良ID禁止）<br>新概念のIDは自分で採番してよい（gid化は実需が出てから）</td>
+      <td>gidは公開時に解決して載せる<br>利用者向けに設計（内部のダンプにしない）<br>他ドメインの属性を焼き込まない（影のマスタ化防止）<br>タイムスタンプ・valid_from/toを最初から設計</td>
+    </tr>
+  </table>
+  <p>既存の顧客・製品を「参照するだけ」なら独自採番もレジストリ登録も不要。登録義務が発生するのは、自前の会員登録口など<b>新しい識別子の発生源になる場合だけ</b>。可能な限り自前採番を避けて既存のマッピング可能なIDを持ち回るのが安上がり。</p>
+</section>
+
+<!-- ============ まとめ ============ -->
+<section class="summary-final">
+  <h2>全体を一言でまとめると</h2>
+  <p><b>データレイク</b>は「データをどこに集めるか」の話。<b>データメッシュ</b>は「意味の決定権を現場に返しながら、どうやって繋がり続けるか」の話。</p>
+  <div class="key">
+    核は一点：「中央がすべてを解釈する」と「何も共有せずサイロ化する」の間で、<br>
+    <b>改訂可能で最小の共有解釈——グローバルID——に留める</b>こと。<br><br>
+    データプロダクトが「使える」を保証し、gidが「繋がる」を保証し、<br>
+    連邦ガバナンス＋自動執行が、その合意を回し続ける。<br>
+    ドメインは意味を所有し、公開の義務を負う。人が裁くのは例外だけ。<br>
+    物理基盤は共有してよい——共有をやめるのは「解釈」であって「インフラ」ではない。
+  </div>
+</section>
+
+<footer>データメッシュに関する対話のまとめ資料 · 2026-07</footer>
+</div>
+</body>
+</html>
