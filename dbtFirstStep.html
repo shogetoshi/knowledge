@@ -1,0 +1,404 @@
+from pathlib import Path
+
+html = r"""<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dbt ファイル間の対応関係</title>
+<style>
+  :root {
+    --raw: #ffe5b4;
+    --source: #fbd2d6;
+    --stg: #cae8ff;
+    --mart: #d7f5d1;
+    --config: #e5dbff;
+    --macro: #fff4ae;
+    --test: #d9f3ec;
+    --text: #1f2937;
+    --line: #d1d5db;
+    --code-bg: #111827;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--text); background: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP",
+      "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    line-height: 1.6;
+  }
+  header { padding: 34px 24px; color: white; background: #172554; }
+  header h1 { margin: 0 0 8px; font-size: 26px; }
+  header p { margin: 0; opacity: .9; }
+  main { max-width: 1200px; padding: 24px; margin: auto; }
+  h2 { margin-top: 38px; padding-bottom: 7px; border-bottom: 2px solid #cbd5e1; }
+  h3 { margin: 0 0 10px; font-size: 18px; }
+  .legend, .note, .file { background: white; border: 1px solid var(--line); border-radius: 10px; }
+  .legend { padding: 16px; }
+  .chips { display: flex; gap: 9px; flex-wrap: wrap; }
+  .chip, mark {
+    display: inline-block; padding: 1px 6px; border-radius: 4px; color: #172554;
+    font-weight: 650; text-decoration: none;
+  }
+  .raw { background: var(--raw); }
+  .source { background: var(--source); }
+  .stg { background: var(--stg); }
+  .mart { background: var(--mart); }
+  .config { background: var(--config); }
+  .macro { background: var(--macro); }
+  .test { background: var(--test); }
+
+  .flow {
+    display: grid; grid-template-columns: 1fr 70px 1fr 70px 1fr; gap: 10px;
+    align-items: stretch; margin: 20px 0;
+  }
+  .flow .node { padding: 16px; border-radius: 10px; border: 1px solid #b6c2d1; }
+  .arrow { display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 26px; color: #64748b; }
+  .arrow small { font-size: 12px; padding-right: 5px; }
+  .path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .file { overflow: hidden; }
+  .file-head { padding: 14px 16px; background: #f1f5f9; border-bottom: 1px solid var(--line); }
+  .file-body { padding: 16px; }
+  .role { margin: 0 0 12px; }
+  pre {
+    margin: 12px 0; padding: 14px; overflow-x: auto; border-radius: 8px;
+    background: var(--code-bg); color: #e5e7eb; line-height: 1.55; font-size: 13px;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre mark { color: #172554; white-space: pre-wrap; }
+  .links { margin: 0; padding-left: 20px; }
+  .links li { margin: 6px 0; }
+  .connection { border-left: 5px solid #94a3b8; padding: 13px 15px; margin: 18px 0; background: white; border-radius: 0 8px 8px 0; }
+  .connection strong { display: inline-block; margin-bottom: 4px; }
+  .summary { width: 100%; border-collapse: collapse; background: white; }
+  .summary th, .summary td { padding: 11px; text-align: left; border: 1px solid var(--line); vertical-align: top; }
+  .summary th { background: #e2e8f0; }
+  .small { font-size: 14px; color: #475569; }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); height: 34px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>dbt プロジェクト：ファイル名・中身・参照関係</h1>
+  <p>同じ色は「同じ名前／同じオブジェクトを指す箇所」を表します。</p>
+</header>
+
+<main>
+  <section class="legend">
+    <h3>色の凡例</h3>
+    <div class="chips">
+      <span class="chip raw">RAW テーブル（dbt 外部の入力）</span>
+      <span class="chip source">source() と source YAML</span>
+      <span class="chip stg">Staging モデル</span>
+      <span class="chip mart">Mart モデル</span>
+      <span class="chip config">プロジェクト設定・Schema 設定</span>
+      <span class="chip macro">Schema 名を変えるマクロ</span>
+      <span class="chip test">説明・データテスト</span>
+    </div>
+  </section>
+
+  <h2>1. まず全体のデータフロー</h2>
+  <div class="flow">
+    <div class="node raw">
+      <strong>RAW（手動 SQL / 別 ETL が作成）</strong>
+      <div class="path">test_catalog.raw.<br>dbt_test_customers</div>
+      <div class="path">test_catalog.raw.<br>dbt_test_orders</div>
+    </div>
+    <div class="arrow"><small>source()</small>→</div>
+    <div class="node stg">
+      <strong>Staging（dbt model）</strong>
+      <div class="path">test_catalog.staging.<br>stg_sample_app__dbt_test_customers</div>
+      <div class="path">test_catalog.staging.<br>stg_sample_app__dbt_test_orders</div>
+    </div>
+    <div class="arrow"><small>ref()</small>→</div>
+    <div class="node mart">
+      <strong>Mart（dbt model）</strong>
+      <div class="path">test_catalog.mart.<br>mart_sales__dbt_test_customer_orders</div>
+    </div>
+  </div>
+
+  <div class="connection">
+    <strong>基本ルール</strong><br>
+    <span class="source">source()</span> は <span class="raw">dbt プロジェクトの外部入力（RAW）</span>を参照します。<br>
+    <span class="stg">ref()</span> は <span class="stg">dbt モデル</span>同士の依存関係を作ります。
+  </div>
+
+  <h2>2. プロジェクト設定：どのフォルダが、どの Schema・形式になるか</h2>
+  <div class="grid">
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="config">dbt_project.yml</span></h3>
+        <div class="path">dbt_test/dbt_project.yml</div>
+      </div>
+      <div class="file-body">
+        <p class="role">フォルダ単位で、出力先 Schema と materialization を指定します。</p>
+        <pre><code>models:
+  dbt_test:
+    <mark class="stg">staging</mark>:
+      +materialized: view
+      +schema: <mark class="stg">staging</mark>
+    <mark class="mart">marts</mark>:
+      +materialized: table
+      +schema: <mark class="mart">mart</mark></code></pre>
+        <ul class="links">
+          <li><span class="stg">models/staging/</span> 配下 → <span class="stg">staging Schema の View</span></li>
+          <li><span class="mart">models/marts/</span> 配下 → <span class="mart">mart Schema の Table</span></li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="macro">macros/generate_schema_name.sql</span></h3>
+        <div class="path">dbt_test/macros/generate_schema_name.sql</div>
+      </div>
+      <div class="file-body">
+        <p class="role"><code>+schema: staging</code> / <code>+schema: mart</code> を、実際にそのまま Schema 名として使うための上書きです。</p>
+        <pre><code>{% macro generate_schema_name(custom_schema_name, node) -%}
+  {% if custom_schema_name is none %}
+    {{ target.schema }}
+  {% else %}
+    <mark class="macro">{{ custom_schema_name | trim }}</mark>
+  {% endif %}
+{%- endmacro %}</code></pre>
+        <p class="small">これがないと、環境設定によっては <code>mart_staging</code> のようにベース Schema と連結されることがあります。</p>
+      </div>
+    </article>
+  </div>
+
+  <h2>3. RAW を dbt の入力として名前付けする：source YAML と Staging SQL</h2>
+
+  <article class="file">
+    <div class="file-head">
+      <h3><span class="source">_sample_app__sources.yml</span></h3>
+      <div class="path">models/staging/sample_app/_sample_app__sources.yml</div>
+    </div>
+    <div class="file-body">
+      <p class="role">RAW テーブルの「dbt 内で使う名前」と、実際の Databricks 上の所在地を結び付けます。</p>
+      <pre><code>version: 2
+
+sources:
+  - name: <mark class="source">sample_app</mark>
+    database: test_catalog
+    schema: raw
+    tables:
+      - name: <mark class="raw">dbt_test_customers</mark>
+        description: 顧客マスタ（RAW）
+      - name: <mark class="raw">dbt_test_orders</mark>
+        description: 注文データ（RAW）</code></pre>
+      <p>
+        ここで定義した <span class="source">source 名</span>と<span class="raw">テーブル名</span>を、
+        SQL 側の <code>source('…', '…')</code> で完全一致させます。
+      </p>
+    </div>
+  </article>
+
+  <div class="grid">
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="stg">stg_sample_app__dbt_test_customers.sql</span></h3>
+        <div class="path">models/staging/sample_app/stg_sample_app__dbt_test_customers.sql</div>
+      </div>
+      <div class="file-body">
+        <pre><code>select
+  customer_id,
+  customer_name,
+  email,
+  created_at
+from {{ source(
+  '<mark class="source">sample_app</mark>',
+  '<mark class="raw">dbt_test_customers</mark>'
+) }}</code></pre>
+        <p>
+          上の色付き部分は <span class="source">_sample_app__sources.yml</span> と対応します。<br>
+          この SQL ファイル自身は <span class="stg">dbt モデル名：stg_sample_app__dbt_test_customers</span> になります。
+        </p>
+      </div>
+    </article>
+
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="stg">stg_sample_app__dbt_test_orders.sql</span></h3>
+        <div class="path">models/staging/sample_app/stg_sample_app__dbt_test_orders.sql</div>
+      </div>
+      <div class="file-body">
+        <pre><code>select
+  order_id,
+  customer_id,
+  order_date,
+  amount
+from {{ source(
+  '<mark class="source">sample_app</mark>',
+  '<mark class="raw">dbt_test_orders</mark>'
+) }}</code></pre>
+        <p>
+          この SQL ファイルも <span class="stg">staging/</span> 配下なので、
+          <span class="config">dbt_project.yml</span> の設定により
+          <span class="stg">test_catalog.staging の View</span> として作られます。
+        </p>
+      </div>
+    </article>
+  </div>
+
+  <div class="connection">
+    <strong>source() の紐付き方</strong><br>
+    <code>source('<span class="source">sample_app</span>', '<span class="raw">dbt_test_customers</span>')</code><br>
+    ↓ YAML の <code>sources[].name</code> と <code>tables[].name</code> を探す<br>
+    ↓ <code>test_catalog.raw.dbt_test_customers</code> に解決される
+  </div>
+
+  <h2>4. Staging モデルの説明・テスト：SQL ファイル名と YAML の <code>name</code> を結ぶ</h2>
+  <article class="file">
+    <div class="file-head">
+      <h3><span class="test">_sample_app__models.yml</span></h3>
+      <div class="path">models/staging/sample_app/_sample_app__models.yml</div>
+    </div>
+    <div class="file-body">
+      <p class="role">モデルの説明、各列の説明、品質テストを定義します。<strong>ここでの <code>name</code> は SQL ファイル名（拡張子なし）と一致させます。</strong></p>
+      <pre><code>version: 2
+
+models:
+  - name: <mark class="stg">stg_sample_app__dbt_test_customers</mark>
+    description: 顧客マスタの staging モデル
+    columns:
+      - name: customer_id
+        data_tests:
+          - <mark class="test">unique</mark>
+          - <mark class="test">not_null</mark>
+
+  - name: <mark class="stg">stg_sample_app__dbt_test_orders</mark>
+    description: 注文データの staging モデル
+    columns:
+      - name: order_id
+        data_tests:
+          - <mark class="test">unique</mark>
+          - <mark class="test">not_null</mark></code></pre>
+
+      <div class="connection">
+        <strong>ファイル名 ↔ YAML の <code>name</code></strong><br>
+        <code><span class="stg">stg_sample_app__dbt_test_customers.sql</span></code>
+        → 拡張子を除く →
+        <code><span class="stg">stg_sample_app__dbt_test_customers</span></code><br>
+        この一致により、説明・列定義・<span class="test">unique / not_null テスト</span>が対象 SQL モデルに付与されます。
+      </div>
+    </div>
+  </article>
+
+  <h2>5. Mart：ref() で dbt モデル同士を接続する</h2>
+  <div class="grid">
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="mart">mart_sales__dbt_test_customer_orders.sql</span></h3>
+        <div class="path">models/marts/sales/mart_sales__dbt_test_customer_orders.sql</div>
+      </div>
+      <div class="file-body">
+        <pre><code>select
+  c.customer_id,
+  c.customer_name,
+  c.email,
+  count(o.order_id) as order_count,
+  coalesce(sum(o.amount), 0) as total_amount,
+  min(o.order_date) as first_order_date,
+  max(o.order_date) as last_order_date
+
+from {{ ref('<mark class="stg">stg_sample_app__dbt_test_customers</mark>') }} c
+left join {{ ref('<mark class="stg">stg_sample_app__dbt_test_orders</mark>') }} o
+  on c.customer_id = o.customer_id
+
+group by 1, 2, 3</code></pre>
+        <p>
+          <span class="stg">ref() 内の名前</span>は、参照先の <span class="stg">SQL ファイル名から .sql を除いた dbt モデル名</span>です。
+        dbt はこの記述から「Staging を先に作り、その後 Mart を作る」と判断します。
+        このファイルは <span class="mart">marts/</span> 配下なので、Table として作成されます。
+        </p>
+      </div>
+    </article>
+
+    <article class="file">
+      <div class="file-head">
+        <h3><span class="test">_sales__models.yml</span></h3>
+        <div class="path">models/marts/sales/_sales__models.yml</div>
+      </div>
+      <div class="file-body">
+        <pre><code>version: 2
+
+models:
+  - name: <mark class="mart">mart_sales__dbt_test_customer_orders</mark>
+    description: 顧客別の注文集計 mart
+    columns:
+      - name: customer_id
+        data_tests:
+          - <mark class="test">unique</mark>
+          - <mark class="test">not_null</mark>
+      - name: total_amount
+        description: 合計注文金額</code></pre>
+        <p>
+          この <code>name</code> は、左の
+          <span class="mart">mart_sales__dbt_test_customer_orders.sql</span>
+          と拡張子なしで一致します。
+        </p>
+      </div>
+    </article>
+  </div>
+
+  <h2>6. 名前がどこで使われているか：対応表</h2>
+  <table class="summary">
+    <thead>
+      <tr><th>名前</th><th>定義する場所</th><th>参照する場所</th><th>意味</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="source">sample_app</span></td>
+        <td><code>_sample_app__sources.yml</code> の <code>sources[].name</code></td>
+        <td><code>source('<span class="source">sample_app</span>', '...')</code></td>
+        <td>dbt 内で RAW データ群をまとめる Source 名</td>
+      </tr>
+      <tr>
+        <td><span class="raw">dbt_test_customers</span></td>
+        <td><code>_sample_app__sources.yml</code> の <code>tables[].name</code></td>
+        <td><code>source('sample_app', '<span class="raw">dbt_test_customers</span>')</code></td>
+        <td>RAW テーブル名</td>
+      </tr>
+      <tr>
+        <td><span class="stg">stg_sample_app__dbt_test_customers</span></td>
+        <td><code>stg_sample_app__dbt_test_customers.sql</code> のファイル名</td>
+        <td><code>_sample_app__models.yml</code> の <code>models[].name</code>、および <code>ref('...')</code></td>
+        <td>dbt モデル名。Databricks 上の View 名にもなる</td>
+      </tr>
+      <tr>
+        <td><span class="mart">mart_sales__dbt_test_customer_orders</span></td>
+        <td><code>mart_sales__dbt_test_customer_orders.sql</code> のファイル名</td>
+        <td><code>_sales__models.yml</code> の <code>models[].name</code>、下流の <code>ref('...')</code></td>
+        <td>dbt モデル名。Databricks 上の Table 名にもなる</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>7. 命名上の「厳格な一致」と「チーム慣習」</h2>
+  <table class="summary">
+    <thead><tr><th>対象</th><th>判定</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr><td><code>dbt_project.yml</code></td><td>厳格</td><td>dbt のプロジェクト設定ファイルとして必要。</td></tr>
+      <tr><td>SQL ファイル名（拡張子なし）と YAML の <code>models[].name</code></td><td>実質的に厳格</td><td>説明・テストを対象モデルに紐付けるため。</td></tr>
+      <tr><td><code>source('source名', 'テーブル名')</code> と source YAML の名前</td><td>厳格</td><td>名前が一致しないと dbt が Source を見つけられないため。</td></tr>
+      <tr><td><code>ref('モデル名')</code> と参照先モデル名</td><td>厳格</td><td>名前が一致しないと dbt が参照先モデルを見つけられないため。</td></tr>
+      <tr><td><code>stg_</code> / <code>mart_</code> / <code>__</code></td><td>慣習</td><td>dbt の予約構文ではない。用途・ソース・業務領域を人間が読みやすくするための規約。</td></tr>
+      <tr><td>YAML の先頭の <code>_</code></td><td>慣習</td><td>補助定義ファイルであることを示す目印。YAML は dbt に読み込まれる。</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small" style="margin-top:24px">
+    補足：この図では分かりやすさのため SQL の一部を省略しています。実際には YAML の description や全カラム定義を必要に応じて追加します。
+  </p>
+</main>
+</body>
+</html>
+"""
+path = Path("/mnt/data/dbt_file_relationships.html")
+path.write_text(html, encoding="utf-8")
+print(f"Created: {path}")
+
